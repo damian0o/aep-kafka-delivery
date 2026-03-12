@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+#
+# Decrypt delivery files.
+#
+# Usage:
+#   ./decrypt.sh <passphrase> [output-dir]
+#
+set -euo pipefail
+
+PASSPHRASE="${1:?Usage: $0 <passphrase> [output-dir]}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+OUTPUT_DIR="${2:-$SCRIPT_DIR/decrypted}"
+
+mkdir -p "$OUTPUT_DIR"
+
+for file in "$SCRIPT_DIR"/*; do
+    [ -f "$file" ] || continue
+    filename="$(basename "$file")"
+    # Skip non-encrypted helper files (with or without .txt suffix)
+    case "$filename" in
+        decrypt.sh*|decrypt.cmd*|README.md) continue ;;
+    esac
+
+    # Restore original name by stripping .txt suffix added for download safety
+    outname="$filename"
+    [[ "$outname" == *.txt ]] && outname="${outname%.txt}"
+
+    openssl enc -aes-256-cbc -d -salt -pbkdf2 -iter 100000 \
+        -in "$file" \
+        -out "$OUTPUT_DIR/$outname" \
+        -pass "pass:$PASSPHRASE"
+    # Make scripts executable
+    [[ "$outname" == *.sh ]] && chmod +x "$OUTPUT_DIR/$outname"
+    echo "Decrypted: $filename -> $outname"
+done
+
+echo ""
+echo "Files decrypted to: $OUTPUT_DIR"
+echo "To install: cd <target-repo> && $OUTPUT_DIR/install.sh"

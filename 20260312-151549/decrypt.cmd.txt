@@ -1,0 +1,41 @@
+@echo off
+setlocal enabledelayedexpansion
+REM
+REM Decrypt delivery files (Windows).
+REM
+REM Usage:
+REM   decrypt.cmd <passphrase> [output-dir]
+REM
+REM Requires OpenSSL (e.g. Git for Windows includes it).
+REM
+
+if "%~1"=="" (
+    echo Usage: %~nx0 ^<passphrase^> [output-dir]
+    exit /b 1
+)
+
+set "PASSPHRASE=%~1"
+set "SCRIPT_DIR=%~dp0"
+set "OUTPUT_DIR=%~2"
+if "%OUTPUT_DIR%"=="" set "OUTPUT_DIR=%SCRIPT_DIR%decrypted"
+
+if not exist "%OUTPUT_DIR%" mkdir "%OUTPUT_DIR%"
+
+for %%f in ("%SCRIPT_DIR%*") do (
+    set "SKIP="
+    if /i "%%~nxf"=="decrypt.sh.txt" set "SKIP=1"
+    if /i "%%~nxf"=="decrypt.cmd.txt" set "SKIP=1"
+    if /i "%%~nxf"=="README.md" set "SKIP=1"
+    if not defined SKIP (
+        set "OUTNAME=%%~nxf"
+        REM Strip .txt suffix added for download safety
+        set "OUTNAME=!OUTNAME:.sh.txt=.sh!"
+        set "OUTNAME=!OUTNAME:.cmd.txt=.cmd!"
+        openssl enc -aes-256-cbc -d -salt -pbkdf2 -iter 100000 -in "%%f" -out "%OUTPUT_DIR%\!OUTNAME!" -pass "pass:!PASSPHRASE!"
+        echo Decrypted: %%~nxf -^> !OUTNAME!
+    )
+)
+
+echo.
+echo Files decrypted to: %OUTPUT_DIR%
+endlocal
