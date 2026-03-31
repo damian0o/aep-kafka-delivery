@@ -1,0 +1,71 @@
+@echo off
+setlocal enabledelayedexpansion
+REM
+REM Decrypt a delivery bundle file (Windows).
+REM
+REM Usage:
+REM   decrypt.cmd <passphrase> <bundle-file> [output-dir]
+REM
+REM The bundle file contains encrypted files concatenated as:
+REM   ===FILE:<filename>===
+REM   <base64 encrypted content>
+REM   ===END===
+REM
+REM Requires OpenSSL and certutil (built-in to Windows).
+REM
+
+if "%~1"=="" (
+    echo Usage: %~nx0 ^<passphrase^> ^<bundle-file^> [output-dir]
+    exit /b 1
+)
+if "%~2"=="" (
+    echo Usage: %~nx0 ^<passphrase^> ^<bundle-file^> [output-dir]
+    exit /b 1
+)
+
+set "PASSPHRASE=%~1"
+set "BUNDLE_FILE=%~2"
+set "SCRIPT_DIR=%~dp0"
+set "OUTPUT_DIR=%~3"
+if "%OUTPUT_DIR%"=="" set "OUTPUT_DIR=%SCRIPT_DIR%decrypted"
+
+if not exist "%BUNDLE_FILE%" (
+    echo Error: bundle file not found: %BUNDLE_FILE%
+    exit /b 1
+)
+
+if not exist "%OUTPUT_DIR%" mkdir "%OUTPUT_DIR%"
+
+set "CURRENT_FILE="
+set "TEMP_B64=%TEMP%\delivery_b64.tmp"
+set "TEMP_ENC=%TEMP%\delivery_enc.tmp"
+
+for /f "usebackq delims=" %%L in ("%BUNDLE_FILE%") do (
+    set "LINE=%%L"
+
+    REM Check for file start marker
+    echo !LINE! | findstr /b "===FILE:" >nul 2>&1
+    if !errorlevel! equ 0 (
+        set "CURRENT_FILE=!LINE:~===FILE:=!"
+        REM Strip ===FILE: prefix and === suffix
+        for /f "tokens=1 delims==" %%N in ("!LINE:===FILE:=!") do set "CURRENT_FILE=%%N"
+        if exist "%TEMP_B64%" del "%TEMP_B64%"
+    ) else if "!LINE!"=="===END===" (
+        if defined CURRENT_FILE (
+            REM Decode base64 to binary
+            certutil -decode "%TEMP_B64%" "%TEMP_ENC%" >nul 2>&1
+            REM Decrypt
+            openssl enc -aes-256-cbc -d -salt -pbkdf2 -iter 100000 -in "%TEMP_ENC%" -out "%OUTPUT_DIR%\!CURRENT_FILE!" -pass "pass:!PASSPHRASE!"
+            echo Decrypted: !CURRENT_FILE!
+            del "%TEMP_B64%" 2>nul
+            del "%TEMP_ENC%" 2>nul
+        )
+        set "CURRENT_FILE="
+    ) else if defined CURRENT_FILE (
+        echo !LINE!>>"%TEMP_B64%"
+    )
+)
+
+echo.
+echo Files decrypted to: %OUTPUT_DIR%
+endlocal
